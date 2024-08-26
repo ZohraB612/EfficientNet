@@ -1,7 +1,7 @@
 from models import  srm, lsg
 import os
 import torch
-from utils import sample, draw, l_sample
+from util import sample, draw, l_sample
 
 
 torch.set_float32_matmul_precision('medium')

@@ -1,8 +1,5 @@
-
 from lxml import etree
 import torch
-import os
-from pathlib import Path
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 def format(x):
@@ -50,36 +47,26 @@ def filter(stroke):
 
 def draw(format_path, size, filename, stroke):
     template = format(format_path)
-    if stroke.dim() == 3:
-        stroke = stroke.squeeze(0)
-    elif stroke.dim() == 1:
-        stroke = stroke.unsqueeze(0)
-    
+    stroke = stroke[0,:,:]
     data = filter(stroke)
-    svg = Rebuild(data, template, size, size / 256)  # Reduced stroke width
+    svg = Rebuild(data, template, size, size / 128)
     save(svg, size, filename)
 
-def sample(samples, steps, decoder, noise_scheduler_sample, condition, dim_in):
-    if not isinstance(condition, torch.Tensor):
-        condition = torch.tensor(condition)
-    device = condition.device
+def sample(samples, steps, model, noise_scheduler, condition, dim_in):
+    stroke = torch.randn(1, samples, dim_in).to(device)
+    c = condition[0,:]
+    for i, t in enumerate(steps):
+        t = torch.full((samples,), t, dtype=torch.long).to(device)
+        with torch.no_grad():
+            with torch.amp.autocast(device_type='cuda', dtype=torch.float16):
+                residual = model(stroke, t, c)
+                stroke = noise_scheduler.step(residual, t[0], stroke)[0]
 
-    x = torch.randn(1, samples, dim_in).to(device)
-    for t in steps:
-        t_tensor = torch.full((1, samples), t, device=device, dtype=torch.long)
-        condition_expanded = condition.unsqueeze(0).unsqueeze(0).expand(1, samples, -1)
-        
-        noise_pred = decoder(x, t_tensor, condition_expanded)
-        x = noise_scheduler_sample.step(noise_pred, t, x).prev_sample
-
-    if x.dim() == 3:
-        x = x.squeeze(0)
-    elif x.dim() == 1:
-        x = x.unsqueeze(0)
-    
-    # Apply post-processing
-    x = torch.tanh(x)  # Constrain values to [-1, 1]
-    return x
+    save_path = "Results/stroke_pt/stroke.pt"
+    torch.save(stroke, save_path)
+    print(f"Stroke saved to {save_path}")
+    print("Dimensions and length of stroke: ", type(stroke), stroke.shape, len(stroke))
+    return stroke
 
 def l_sample(timesteps, model, noise_scheduler):
     model.eval()
@@ -91,22 +78,3 @@ def l_sample(timesteps, model, noise_scheduler):
             latent = noise_scheduler.step(residual, t[0], latent)[0]
             #latent =torch.unsqueeze(latent, 0)
     return latent
-
-def save(s, dim, filename):
-    # Extract directory path from filename
-    directory = Path(filename).parent
-
-    # Create directory if it doesn't exist
-    directory.mkdir(parents=True, exist_ok=True)
-
-    # Create a new SVG element
-    New = etree.XML(
-        '<svg width= "{}" height= "{}" version="1.1" xmlns="http://www.w3.org/2000/svg"></svg>'.format(dim, dim))
-
-    # Append SVG elements to the new SVG
-    for i in s:
-        New.append(etree.fromstring(i))
-
-    # Write the SVG data to the file
-    tree = etree.ElementTree(New)
-    tree.write(filename, pretty_print=True)

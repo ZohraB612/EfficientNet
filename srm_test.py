@@ -8,9 +8,9 @@ from utils import sample, draw
 
 experiment_name = 'SRM Test'
 torch.set_float32_matmul_precision('medium')
-test_path = "./Data/1k.pt"
+test_path = "./Data/10k.pt"
 device = "cuda" if torch.cuda.is_available() else "cpu"
-model = srm.load_from_checkpoint(".\Models\Experiment-10\epoch=17099-global_step=0.ckpt")
+model = srm.load_from_checkpoint("./Models/SRM.ckpt")
 size = 512
 dim_in = 6
 samples = 1000
@@ -37,5 +37,4 @@ for i in range(reps):
 
 Latents = [item for sublist in L for item in sublist]
 torch.save(Latents, 'Latent/{}.pt'.format(experiment_name))
-
 
